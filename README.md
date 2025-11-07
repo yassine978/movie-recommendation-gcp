@@ -133,6 +133,9 @@ Coming soon...
 - [API Documentation](docs/api_documentation.md)
 - [Deployment Guide](docs/deployment_guide.md)
 
+## 👥 Team
+- **[Mohamed Yassine Madhi]**: Data Pipeline & Model Development
+- **[Mehdi Znaidi]**: API Development & Deployment
 
 ## 📅 Project Timeline
 
