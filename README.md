@@ -53,7 +53,7 @@ A production-ready personalized movie recommendation system deployed on GCP that
 ┌─────────────────────────────────────────────────────────────────┐
 │                   CLOUD STORAGE (MODEL STORAGE)                 │
 │                                                                 │
-│  Bucket: students-groupX-models                                │
+│  Bucket: students-group2-models                                │
 │  • recommender_v1.pkl                                          │
 │  • recommender_v2_final.pkl                                    │
 │  • model_metadata.json                                         │
