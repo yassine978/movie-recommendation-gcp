@@ -40,7 +40,7 @@ def train_model(sample_size: int = None, save_dir: str = 'models'):
     
     # Step 1: Load data from BigQuery
     logger.info("Step 1: Loading data from BigQuery...")
-    loader = BigQueryLoader(project_id='students-groupX')  # Replace with your project
+    loader = BigQueryLoader(project_id='master-ai-cloud')  # Replace with your project
     
     if sample_size:
         logger.info(f"Loading sample of {sample_size} ratings for testing...")
