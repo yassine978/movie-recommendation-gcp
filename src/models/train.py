@@ -64,16 +64,19 @@ def train_model(sample_size: int = None, save_dir: str = 'models'):
     # Step 3: Train model with optimal parameters
     logger.info("Step 3: Training SVD model...")
     
-    # These are the optimal parameters from hyperparameter tuning
-    # You'll update these after running hyperparameter tuning
-    optimal_params = {
-        'n_factors': 100,
-        'n_epochs': 20,
-        'lr_all': 0.005,
-        'reg_all': 0.02,
-        'random_state': 42,
-        'verbose': True
-    }
+    # Load optimal parameters from hyperparameter tuning
+    with open('models/optimal_hyperparameters.json', 'r') as f:
+        optimal_params = json.load(f)
+
+    # Use these in training
+    recommender = MovieRecommender(
+        n_factors=optimal_params['n_factors'],
+        n_epochs=optimal_params['n_epochs'],
+        lr_all=optimal_params['lr_all'],
+        reg_all=optimal_params['reg_all'],
+        random_state=42,
+        verbose=True
+    )
     
     recommender = MovieRecommender(**optimal_params)
     
