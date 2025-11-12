@@ -26,10 +26,10 @@
 - ✅ Handles new users and users with <5 ratings
 
 ## Key Results
-- Model training time: 54.06 seconds
+- Model training time: 0.28 seconds
 - Test set RMSE:  0.5662
 - Test set MAE: 0.4599
-- Cold start users handled: 3.6% of dataset
+- Cold start users handled: 29.8% of dataset
 
 ## Next Steps
 - Deploy model to Cloud Run (Phase 3)
