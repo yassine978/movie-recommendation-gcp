@@ -40,45 +40,60 @@ def train_model(sample_size: int = None, save_dir: str = 'models'):
     
     # Step 1: Load data from BigQuery
     logger.info("Step 1: Loading data from BigQuery...")
-    loader = BigQueryLoader(project_id='master-ai-cloud')  # Replace with your project
+    loader = BigQueryLoader(project_id='master-ai-cloud')
     
     if sample_size:
         logger.info(f"Loading sample of {sample_size} ratings for testing...")
         ratings_df = loader.load_ratings(limit=sample_size)
     else:
-        logger.info("Loading full dataset...")
+        logger.info("Loading full dataset (100K ratings)...")
         ratings_df = loader.load_ratings()
     
     movies_df = loader.load_movies()
     
-    logger.info(f"Loaded {len(ratings_df)} ratings and {len(movies_df)} movies")
+    logger.info(f"✓ Loaded {len(ratings_df)} ratings and {len(movies_df)} movies")
     
     # Step 2: Preprocess data
-    logger.info("Step 2: Preprocessing data...")
+    logger.info("\nStep 2: Preprocessing data...")
     preprocessor = DataPreprocessor(ratings_df, movies_df)
     
     # Filter cold start users (optional, since we only have 3.6%)
     ratings_filtered = preprocessor.filter_cold_start_users(min_ratings=5)
-    logger.info(f"Filtered dataset: {len(ratings_filtered)} ratings")
+    logger.info(f"✓ Filtered dataset: {len(ratings_filtered)} ratings")
     
     # Step 3: Train model with optimal parameters
-    logger.info("Step 3: Training SVD model...")
+    logger.info("\nStep 3: Training SVD model...")
     
     # Load optimal parameters from hyperparameter tuning
-    with open('models/optimal_hyperparameters.json', 'r') as f:
-        optimal_params = json.load(f)
-
-    # Use these in training
-    recommender = MovieRecommender(
-        n_factors=optimal_params['n_factors'],
-        n_epochs=optimal_params['n_epochs'],
-        lr_all=optimal_params['lr_all'],
-        reg_all=optimal_params['reg_all'],
-        random_state=42,
-        verbose=True
-    )
+    optimal_params_path = 'models/optimal_hyperparameters.json'
     
-    recommender = MovieRecommender(**optimal_params)
+    if os.path.exists(optimal_params_path):
+        logger.info(f"Loading optimal parameters from {optimal_params_path}")
+        with open(optimal_params_path, 'r') as f:
+            all_params = json.load(f)
+        
+        # Extract only the valid parameters for MovieRecommender
+        valid_params = {
+            'n_factors': all_params.get('n_factors', 100),
+            'n_epochs': all_params.get('n_epochs', 20),
+            'lr_all': all_params.get('lr_all', 0.006),
+            'reg_all': all_params.get('reg_all', 0.025),
+            'random_state': 42,
+            'verbose': True
+        }
+        logger.info(f"Using parameters: {valid_params}")
+    else:
+        logger.warning(f"Optimal parameters file not found. Using defaults.")
+        valid_params = {
+            'n_factors': 100,
+            'n_epochs': 20,
+            'lr_all': 0.006,
+            'reg_all': 0.025,
+            'random_state': 42,
+            'verbose': True
+        }
+    
+    recommender = MovieRecommender(**valid_params)
     
     # Train the model
     metrics = recommender.train(
@@ -88,8 +103,9 @@ def train_model(sample_size: int = None, save_dir: str = 'models'):
     )
     
     # Step 4: Display training results
-    logger.info("="*50)
+    logger.info("\n" + "="*50)
     logger.info("Training Complete!")
+    logger.info("="*50)
     logger.info(f"RMSE: {metrics['rmse']:.4f}")
     logger.info(f"MAE: {metrics['mae']:.4f}")
     logger.info(f"Training samples: {metrics['n_train']}")
@@ -103,17 +119,16 @@ def train_model(sample_size: int = None, save_dir: str = 'models'):
     if sample_size:
         model_path = f"{save_dir}/recommender_sample_{sample_size}.pkl"
     else:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        model_path = f"{save_dir}/recommender_v2_{timestamp}.pkl"
+        model_path = f"{save_dir}/recommender_v2_final.pkl"
     
     recommender.save_model(model_path)
-    logger.info(f"Model saved to: {model_path}")
+    logger.info(f"\n✓ Model saved to: {model_path}")
     
     # Save training metrics
     metrics_path = model_path.replace('.pkl', '_metrics.json')
     with open(metrics_path, 'w') as f:
         json.dump(metrics, f, indent=2)
-    logger.info(f"Metrics saved to: {metrics_path}")
+    logger.info(f"✓ Metrics saved to: {metrics_path}")
     
     # Step 6: Test recommendations for a sample user
     logger.info("\nTesting recommendations for user 1...")
@@ -121,16 +136,29 @@ def train_model(sample_size: int = None, save_dir: str = 'models'):
     
     logger.info("Top 5 recommendations:")
     for i, rec in enumerate(recommendations, 1):
-        logger.info(f"{i}. {rec['title']} (predicted: {rec['predicted_rating']})")
+        movie_title = rec.get('title', 'Unknown')
+        predicted = rec.get('predicted_rating', 0)
+        logger.info(f"  {i}. {movie_title} (predicted: {predicted:.2f})")
     
     return recommender, metrics
 
 
 if __name__ == "__main__":
-    # Train on sample first for testing
-    logger.info("Training on sample data for testing...")
-    model, metrics = train_model(sample_size=5000)
+    import argparse
     
-    # Uncomment below to train on full dataset
-    # logger.info("\nTraining on full dataset...")
-    # model, metrics = train_model(sample_size=None)
+    parser = argparse.ArgumentParser(description='Train movie recommender model')
+    parser.add_argument('--sample', type=int, default=None, 
+                        help='Sample size for testing (default: full dataset)')
+    parser.add_argument('--save-dir', type=str, default='models',
+                        help='Directory to save model (default: models/)')
+    
+    args = parser.parse_args()
+    
+    if args.sample:
+        logger.info(f"Training on sample data ({args.sample} ratings)...")
+        model, metrics = train_model(sample_size=args.sample, save_dir=args.save_dir)
+    else:
+        logger.info("Training on FULL dataset...")
+        model, metrics = train_model(sample_size=None, save_dir=args.save_dir)
+    
+    logger.info("\n✓ Training complete! Model ready for deployment.")
