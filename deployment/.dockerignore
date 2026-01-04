@@ -18,3 +18,5 @@ tests/
 .ipynb_checkpoints
 *.ipynb
 .DS_Store
+deployment/
+*.log

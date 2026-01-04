@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+env/
+venv/
+.venv
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Data files
+data/
+*.csv
+*.parquet
+*.json
+!models/*.json
+
+# Git
+.git/
+.gitignore
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Documentation
+docs/
+*.md
+
+# Tests
+tests/
+.pytest_cache/
+
+# Notebooks
+notebooks/
+
+# Logs
+*.log
+
+# IMPORTANT: Do NOT ignore models directory or .pkl files!
+# We need models/recommender_v2_final.pkl
