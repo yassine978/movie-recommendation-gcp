@@ -1,154 +1,59 @@
-# Movie Recommendation System on GCP
+# Movie Recommendation System (Vertex AI Workbench)
 
-**Group Members**: [Mohamed Yassine Madhi] & [Mehdi Zneidi]  
+**Group Members**: Mohamed Yassine Madhi & Mehdi Zneidi  
 **Project**: Personalized Movie Recommendation System  
-**Platform**: Google Cloud Platform
+**Environment**: Vertex AI Workbench (JupyterLab)
 
-## 🎯 Project Overview
+## 🎯 Overview
 
-A production-ready personalized movie recommendation system deployed on GCP that demonstrates how recommendations evolve as users interact with the system.
+A production-ready movie recommendation system demonstrating how recommendations evolve as users interact with the application.
 
-## 🏗️ Architecture
+The project provides:
+- A **FastAPI** backend exposing recommendation endpoints
+- A **Gradio** UI (Workbench-friendly) to interactively test the system
+- Multiple recommendation strategies: **cold start**, **genre-based**, and **personalized (SVD)**
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    BIGQUERY (DATA LAYER)                        │
-│              master-ai-cloud.MoviePlatform                      │
-│           ┌──────────────┐         ┌──────────────┐            │
-│           │    movies    │         │   ratings    │            │
-│           │  (9K rows)   │         │  (100K rows) │            │
-│           └──────────────┘         └──────────────┘            │
-└────────────────────────┬────────────────────────────────────────┘
-                        │ (BigQuery API)
-                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              VERTEX AI WORKBENCH (DEVELOPMENT)                  │
-│                      JupyterLab Environment                     │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  NOTEBOOKS                                              │  │
-│  │  • 01_data_exploration.ipynb                           │  │
-│  │  • 02_model_development.ipynb                          │  │
-│  │  • 03_demo.ipynb                                       │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  SOURCE CODE                                            │  │
-│  │  • src/data/bigquery_loader.py                         │  │
-│  │  • src/data/preprocessing.py                           │  │
-│  │  • src/models/recommender.py                           │  │
-│  │  • src/models/cold_start.py                            │  │
-│  │  • src/api/main.py                                     │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  MODEL TRAINING                                         │  │
-│  │  • Load data from BigQuery                             │  │
-│  │  • Train SVD model                                     │  │
-│  │  • Save to local & Cloud Storage                       │  │
-│  └─────────────────────────────────────────────────────────┘  │
-└────────────────────────┬────────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   CLOUD STORAGE (MODEL STORAGE)                 │
-│                                                                 │
-│  Bucket: students-group2-models                                │
-│  • recommender_v1.pkl                                          │
-│  • recommender_v2_final.pkl                                    │
-│  • model_metadata.json                                         │
-└────────────────────────┬────────────────────────────────────────┘
-                        │ (Load at startup)
-                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    FASTAPI APPLICATION                          │
-│                      (Containerized)                            │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  API ENDPOINTS                                          │  │
-│  │                                                         │  │
-│  │  GET  /                    - API info                   │  │
-│  │  GET  /health              - Health check               │  │
-│  │  GET  /movies/popular      - Popular movies (cold start)│  │
-│  │  GET  /movies/search       - Search movies              │  │
-│  │  GET  /movies/{id}         - Movie details             │  │
-│  │  GET  /user/{id}/recommendations - Personalized recs   │  │
-│  │  POST /user/{id}/rate      - Submit ratings            │  │
-│  │  GET  /movies/{id}/similar - Similar movies            │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  RECOMMENDATION ENGINE                                  │  │
-│  │                                                         │  │
-│  │  • MovieRecommender (SVD model)                        │  │
-│  │  • ColdStartHandler (popular movies)                   │  │
-│  │  • BigQuery connection (real-time data)                │  │
-│  └─────────────────────────────────────────────────────────┘  │
-└────────────────────────┬────────────────────────────────────────┘
-                        │ (Docker container)
-                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              GOOGLE CLOUD RUN (DEPLOYMENT)                      │
-│                                                                 │
-│  • Serverless container platform                               │
-│  • Auto-scaling (0 to N instances)                             │
-│  • HTTPS endpoint                                              │
-│  • Monitoring & Logging                                        │
-│  • Public access (allow-unauthenticated)                       │
-└────────────────────────┬────────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    USER / DEMO INTERFACE                        │
-│                                                                 │
-│  • Jupyter Notebook (Demo)                                     │
-│  • cURL / Postman (Testing)                                    │
-│  • Swagger UI (Interactive docs)                               │
-│  • Custom Frontend (Optional)                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-
-## 🚀 Quick Start
-
-Coming soon...
-
-## 📊 Dataset
-
-- **Source**: MovieLens via BigQuery
-- **Location**: `master-ai-cloud.MoviePlatform`
-- **Tables**: `movies`, `ratings`
-- **Size**: ~9,000 movies, ~100,000 ratings
-
-## 🛠️ Technology Stack
-
-- **Cloud**: Google Cloud Platform (BigQuery, Cloud Run, Vertex AI)
-- **ML**: SVD (scikit-surprise)
-- **API**: FastAPI
-- **Deployment**: Docker + Cloud Run
-
-## 📝 Documentation
-
-- [Architecture](docs/architecture.md)
-- [API Documentation](docs/api_documentation.md)
-- [Deployment Guide](docs/deployment_guide.md)
-
-## 👥 Team
-- **[Mohamed Yassine Madhi]**: Data Pipeline & Model Development
-- **[Mehdi Znaidi]**: API Development & Deployment
-
-## 📅 Project Timeline
-
-- **Week 1**: Data Exploration & Preprocessing
-- **Week 2**: Model Development
-- **Week 3**: API & Deployment
-- **Week 4**: Demo & Documentation
-
-## 🔗 Links
-
-- **Deployed API**: [URL will be added after deployment]
-- **GitHub**: [https://github.com/yassine978/movie-recommendation-gcp]
+> Note: Due to access constraints on Cloud Run / Artifact Registry, the final demo runs **locally in Vertex AI Workbench** (as requested by the instructor).
 
 ---
 
-**Last Updated**: 2025-11-07
+## ✨ Key Features
+
+- **Multiple recommendation modes**
+  - **Cold Start**: popular movies (BigQuery if available, otherwise local fallback)
+  - **Genre-based**: for users with a few ratings (1–4)
+  - **Personalized (SVD)**: collaborative filtering for users with ≥5 ratings
+- **Interactive Gradio UI**
+  - Search movies, view details, browse popular, rate movies, request recommendations
+- **Robust data strategy**
+  - BigQuery optional; automatic fallback to local data (movies from model artifact)
+- **Demo-ready**
+  - Reset user ratings, inspect user cache, view metadata and system status
+
+---
+
+## 🧱 Architecture
+
+┌──────────────────────────────────────────────────────────────────┐
+│ VERTEX AI WORKBENCH (RUNTIME)                                    │
+│ JupyterLab Environment                                           │
+│                                                                  │
+│ ┌──────────────────────────┐ ┌─────────────────────────┐         │
+│ │ Gradio UI                │       │ FastAPI API  │                │
+│ │ frontend/gradio_app.py │<----->│ src/api/main.py     │         │
+│ │ /proxy/7860 │ HTTP         │ /docs, /health, etc.    │         │
+│ └──────────────────────────┘ └───────────┬─────────────┘         │
+│ │                                                                │
+│ ▼                                                                │
+│ ┌───────────────────────────┐                                    │
+│ │ Recommendation Engine     │                                    │
+│ │ - MovieRecommender (SVD) │                                     │
+│ │ - ColdStartHandler       │                                     │
+│ └───────────┬──────────────┘                                     │
+│              │                                                   │
+│ ┌─────────────────────┴────────────────┐                         │
+│ │ Data Access Strategy ││
+│ │ 1) BigQuery (optional) ││
+│ │ 2) Local fallback (always available) ││
+│ └───────────────────────────────────────┘│
+└──────────────────────────────────────────────────────────────────┘
