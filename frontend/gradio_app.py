@@ -1,6 +1,7 @@
 import requests
 import pandas as pd
 import gradio as gr
+import matplotlib.pyplot as plt
 
 API_BASE = "http://127.0.0.1:8000"
 
@@ -13,10 +14,12 @@ def _get(path, params=None):
     r.raise_for_status()
     return r.json()
 
+
 def _post(path, json=None):
     r = requests.post(f"{API_BASE}{path}", json=json, timeout=30)
     r.raise_for_status()
     return r.json()
+
 
 def _to_df(items):
     if items is None:
@@ -28,38 +31,82 @@ def _to_df(items):
     return pd.DataFrame([items])
 
 
+def _strip_score_fields_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove score/extra fields from tables everywhere."""
+    if df is None or df.empty:
+        return df
+    drop_cols = [c for c in ["predicted_rating", "popularity_score", "num_ratings", "similarity_score", "similarity"] if c in df.columns]
+    return df.drop(columns=drop_cols, errors="ignore")
+
+
+def _strip_score_fields_obj(obj):
+    """Remove score/extra fields from dict/list responses (e.g., similar result JSON)."""
+    drop_keys = {"predicted_rating", "popularity_score", "num_ratings", "similarity_score", "similarity"}
+
+    if isinstance(obj, list):
+        cleaned = []
+        for item in obj:
+            if isinstance(item, dict):
+                cleaned.append({k: _strip_score_fields_obj(v) for k, v in item.items() if k not in drop_keys})
+            else:
+                cleaned.append(item)
+        return cleaned
+
+    if isinstance(obj, dict):
+        # If it's a "similar_movies" payload, clean inside
+        out = {}
+        for k, v in obj.items():
+            if k in drop_keys:
+                continue
+            out[k] = _strip_score_fields_obj(v)
+        return out
+
+    return obj
+
+
 # ---------------------------
-# Actions
+# API wrappers
 # ---------------------------
 def api_health():
     return _get("/health")
 
+
 def api_meta():
     return _get("/meta")
 
+
 def api_search(title, limit):
-    return _to_df(_get("/movies/search", params={"query": title, "limit": int(limit)}))
+    df = _to_df(_get("/movies/search", params={"query": title, "limit": int(limit)}))
+    return _strip_score_fields_df(df)
+
 
 def api_movie_details(movie_id):
-    return _get(f"/movies/{int(movie_id)}")
+    obj = _get(f"/movies/{int(movie_id)}")
+    return _strip_score_fields_obj(obj)
+
 
 def api_similar(movie_id, n):
-    return _get(f"/movies/{int(movie_id)}/similar", params={"n": int(n)})
+    obj = _get(f"/movies/{int(movie_id)}/similar", params={"n": int(n)})
+    return _strip_score_fields_obj(obj)
+
 
 def api_popular(n, genre):
     params = {"n": int(n)}
-    if genre and genre.strip():
-        params["genre"] = genre.strip()
-    return _to_df(_get("/movies/popular", params=params))
+    if genre and str(genre).strip():
+        params["genre"] = str(genre).strip()
+    df = _to_df(_get("/movies/popular", params=params))
+    return _strip_score_fields_df(df)
+
 
 def api_user_ratings(user_id):
     return _get(f"/user/{int(user_id)}/ratings")
 
+
 def api_reset_user(user_id):
     return _post(f"/user/{int(user_id)}/reset")
 
+
 def api_submit_ratings(user_id, ratings_df: pd.DataFrame):
-    # ratings_df has columns movieId, rating
     if ratings_df is None or len(ratings_df) == 0:
         return {"status": "error", "message": "No ratings provided"}
 
@@ -78,29 +125,37 @@ def api_submit_ratings(user_id, ratings_df: pd.DataFrame):
     payload = {"ratings": ratings_payload}
     return _post(f"/user/{int(user_id)}/rate", json=payload)
 
+
 def api_recommendations(user_id, n):
-    return _get(f"/user/{int(user_id)}/recommendations", params={"n": int(n)})
+    obj = _get(f"/user/{int(user_id)}/recommendations", params={"n": int(n)})
+    # Strip score fields inside recommendations list too
+    if isinstance(obj, dict) and "recommendations" in obj:
+        obj["recommendations"] = _strip_score_fields_obj(obj["recommendations"])
+    return obj
 
 
 # ---------------------------
 # Recommendation orchestration (AUTO / MANUAL)
+#  - Recommendations tab: remove genre input, so forced cold_start uses no genre
 # ---------------------------
-def ui_get_recommendations(user_id, n, mode, genre_for_cold_start):
+def ui_get_recommendations(user_id, n, mode):
     user_id = int(user_id)
     n = int(n)
-    mode = mode.strip()
+    mode = (mode or "").strip()
 
-    # read user ratings count
     ur = api_user_ratings(user_id)
-    count = ur.get("count", 0)
+    count = int(ur.get("count", 0))
 
     if mode == "AUTO":
         rec = api_recommendations(user_id, n)
         df = _to_df(rec.get("recommendations", []))
+        df = _strip_score_fields_df(df)
         return rec.get("recommendation_type"), rec.get("num_ratings"), df
 
     if mode == "cold_start":
-        df = api_popular(n, genre_for_cold_start)
+        # forced cold start uses API popular without genre (per request)
+        df = _to_df(_get("/movies/popular", params={"n": n}))
+        df = _strip_score_fields_df(df)
         return "cold_start_forced", count, df
 
     if mode == "genre_based":
@@ -108,37 +163,65 @@ def ui_get_recommendations(user_id, n, mode, genre_for_cold_start):
             return "error", count, pd.DataFrame([{"error": "Add 1-4 ratings first to use genre_based"}])
         if count >= 5:
             return "error", count, pd.DataFrame([{"error": "You already have >=5 ratings; genre_based is for 1-4 ratings"}])
-        rec = api_recommendations(user_id, n)  # will naturally choose genre_based(_local)
+
+        rec = api_recommendations(user_id, n)
         df = _to_df(rec.get("recommendations", []))
+        df = _strip_score_fields_df(df)
         return rec.get("recommendation_type"), rec.get("num_ratings"), df
 
     if mode == "personalized":
         if count < 5:
             return "error", count, pd.DataFrame([{"error": "Add at least 5 ratings to use personalized mode"}])
+
         rec = api_recommendations(user_id, n)
         df = _to_df(rec.get("recommendations", []))
+        df = _strip_score_fields_df(df)
         return rec.get("recommendation_type"), rec.get("num_ratings"), df
 
     return "error", count, pd.DataFrame([{"error": f"Unknown mode: {mode}"}])
 
 
 # ---------------------------
+# Analytics (RMSE + User rating distribution only)
+#  - Remove sparsity
+# ---------------------------
+def ui_meta_summary():
+    meta = api_meta()
+    rmse = meta.get("rmse", None)
+    summary = f"RMSE: {rmse}"
+    return summary, meta
+
+
+def plot_user_ratings_hist(user_id: int):
+    ur = api_user_ratings(int(user_id))
+    ratings = [r.get("rating") for r in ur.get("ratings", []) if "rating" in r]
+
+    fig = plt.figure()
+    if not ratings:
+        plt.title("User rating distribution (empty)")
+        plt.xlabel("rating")
+        plt.ylabel("count")
+        return fig
+
+    plt.hist(ratings, bins=[0.5, 1.5, 2.5, 3.5, 4.5, 5.5], edgecolor="black")
+    plt.title(f"User {int(user_id)} rating distribution")
+    plt.xlabel("rating")
+    plt.ylabel("count")
+    return fig
+
+
+# ---------------------------
 # UI
 # ---------------------------
 with gr.Blocks(title="Movie Recommender Demo (FastAPI + Gradio)") as demo:
-    gr.Markdown("# 🎬 Movie Recommendation Demo (API FastAPI + Gradio)\nCompatible Workbench (sans WebSocket Streamlit).")
+    gr.Markdown(
+        "# 🎬 Movie Recommendation Demo (FastAPI + Gradio)\n"
+        "Compatible Vertex AI Workbench proxy."
+    )
 
-    with gr.Tab("✅ Health & Meta"):
-        with gr.Row():
-            btn_health = gr.Button("Check API health", scale=1)
-            btn_meta = gr.Button("Show /meta", scale=1)
 
-        out_health = gr.JSON(label="/health")
-        out_meta = gr.JSON(label="/meta")
 
-        btn_health.click(fn=api_health, outputs=out_health)
-        btn_meta.click(fn=api_meta, outputs=out_meta)
-
+    # ---- Explorer
     with gr.Tab("🔎 Explorer"):
         gr.Markdown("### Search movies by title")
         with gr.Row():
@@ -163,6 +246,7 @@ with gr.Blocks(title="Movie Recommender Demo (FastAPI + Gradio)") as demo:
         out_similar = gr.JSON(label="Similar result")
         btn_similar.click(fn=api_similar, inputs=[sim_id, sim_n], outputs=out_similar)
 
+    # ---- Popular / Cold start
     with gr.Tab("⭐ Cold Start / Popular"):
         with gr.Row():
             pop_n = gr.Slider(1, 50, value=10, step=1, label="Top-N")
@@ -171,6 +255,7 @@ with gr.Blocks(title="Movie Recommender Demo (FastAPI + Gradio)") as demo:
         out_pop = gr.Dataframe(label="Popular movies", interactive=False)
         btn_pop.click(fn=api_popular, inputs=[pop_n, pop_genre], outputs=out_pop)
 
+    # ---- Rate Movies
     with gr.Tab("✍️ Rate movies"):
         with gr.Row():
             rate_user = gr.Number(label="user_id", value=9, precision=0)
@@ -183,7 +268,6 @@ with gr.Blocks(title="Movie Recommender Demo (FastAPI + Gradio)") as demo:
         btn_reset.click(fn=api_reset_user, inputs=[rate_user], outputs=out_user_ratings)
 
         gr.Markdown("### Add ratings (movieId + rating)")
-        # editable table
         ratings_table = gr.Dataframe(
             headers=["movieId", "rating"],
             value=pd.DataFrame([{"movieId": 1, "rating": 4.0}]),
@@ -192,9 +276,9 @@ with gr.Blocks(title="Movie Recommender Demo (FastAPI + Gradio)") as demo:
         )
         btn_submit = gr.Button("Submit ratings")
         out_submit = gr.JSON(label="Submit response")
-
         btn_submit.click(fn=api_submit_ratings, inputs=[rate_user, ratings_table], outputs=out_submit)
 
+    # ---- Recommendations
     with gr.Tab("🎯 Recommendations"):
         with gr.Row():
             rec_user = gr.Number(label="user_id", value=9, precision=0)
@@ -204,7 +288,6 @@ with gr.Blocks(title="Movie Recommender Demo (FastAPI + Gradio)") as demo:
                 value="AUTO",
                 label="Execution mode",
             )
-            rec_genre = gr.Textbox(label="Genre (only used for forced cold_start)", placeholder="e.g. Comedy")
 
         btn_rec = gr.Button("Get recommendations")
 
@@ -214,8 +297,24 @@ with gr.Blocks(title="Movie Recommender Demo (FastAPI + Gradio)") as demo:
 
         btn_rec.click(
             fn=ui_get_recommendations,
-            inputs=[rec_user, rec_n, rec_mode, rec_genre],
+            inputs=[rec_user, rec_n, rec_mode],
             outputs=[out_rec_type, out_num_ratings, out_rec_df],
         )
+
+    # ---- Analytics (RMSE + User distribution only)
+    with gr.Tab("📊 Analytics"):
+        gr.Markdown("### Model metrics & user rating diagnostics")
+
+        with gr.Row():
+            a_btn_refresh = gr.Button("Refresh metrics")
+            a_user = gr.Number(label="user_id (for rating histogram)", value=9, precision=0)
+            a_btn_user_hist = gr.Button("Plot user ratings")
+
+        a_summary = gr.Textbox(label="Summary", lines=2)
+        a_meta = gr.JSON(label="/meta")
+        a_plot_user = gr.Plot(label="User rating distribution")
+
+        a_btn_refresh.click(fn=ui_meta_summary, outputs=[a_summary, a_meta])
+        a_btn_user_hist.click(fn=plot_user_ratings_hist, inputs=[a_user], outputs=a_plot_user)
 
 demo.launch(server_name="0.0.0.0", server_port=7860)
