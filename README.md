@@ -272,7 +272,6 @@ python frontend/gradio_app.py
 ```
 
 The Gradio interface will open in your browser with tabs for:
-- **Health & Meta**: System status and metadata
 - **Explorer**: Search movies, view details, find similar movies
 - **Cold Start / Popular**: Browse popular movies
 - **Rate Movies**: Submit ratings and manage your profile
